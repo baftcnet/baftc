@@ -1,4 +1,63 @@
 
+class Load_BCIC_2a():
+    '''
+    Subclass of LoadData for loading BCI Competition IV Dataset 2a.
+
+    Methods:
+        get_epochs(self, tmin=-0., tmax=2, baseline=None, downsampled=None)
+    '''
+    def __init__(self, data_path, persion):
+        self.stimcodes_train=('769','770','771','772')
+        self.stimcodes_test=('783')
+        self.data_path = data_path
+        self.persion = persion
+        self.channels_to_remove = ['EOG-left', 'EOG-central', 'EOG-right']
+        super(Load_BCIC_2a,self).__init__()
+
+    def get_epochs_train(self, tmin=-0., tmax=2, low_freq=None, high_freq=None, baseline=None, downsampled=None):
+        file_to_load = 's{:}/'.format(self.persion) + 'A0' + self.persion + 'T.gdf'
+        raw_data = mne.io.read_raw_gdf(self.data_path + file_to_load, preload=True)
+        if low_freq and high_freq:
+            raw_data.filter(l_freq=low_freq, h_freq=high_freq)
+        if downsampled is not None:
+            raw_data.resample(sfreq=downsampled)
+        self.fs = raw_data.info.get('sfreq')
+        events, event_ids = mne.events_from_annotations(raw_data)
+        stims =[value for key, value in event_ids.items() if key in self.stimcodes_train]
+        epochs = mne.Epochs(raw_data, events, event_id=stims, tmin=tmin, tmax=tmax, event_repeated='drop',
+                            baseline=baseline, preload=True, proj=False, reject_by_annotation=False)
+        epochs = epochs.drop_channels(self.channels_to_remove)
+        self.y_labels = epochs.events[:, -1] - min(epochs.events[:, -1])
+        self.x_data = epochs.get_data()*1e6
+        eeg_data={'x_data':self.x_data[:, :, :-1],
+                  'y_labels':self.y_labels,
+                  'fs':self.fs}
+        return eeg_data
+
+    def get_epochs_test(self, tmin=-0., tmax=2, low_freq=None, high_freq=None, baseline=None, downsampled=None):
+        file_to_load = 's{:}/'.format(self.persion) + 'A0' + self.persion + 'E.gdf'
+        raw_data = mne.io.read_raw_gdf(self.data_path + file_to_load, preload=True)
+        data_path_label = self.data_path + "true_labels/A0" + self.persion + "E.mat"
+        mat_label = scio.loadmat(data_path_label)
+        mat_label = mat_label['classlabel'][:,0]-1
+        if (low_freq is not None) and (high_freq is not None):
+            raw_data.filter(l_freq=low_freq, h_freq=high_freq)
+        if downsampled is not None:
+            raw_data.resample(sfreq=downsampled)
+        self.fs = raw_data.info.get('sfreq')
+        events, event_ids = mne.events_from_annotations(raw_data)
+        stims =[value for key, value in event_ids.items() if key in self.stimcodes_test]
+        epochs = mne.Epochs(raw_data, events, event_id=stims, tmin=tmin, tmax=tmax, event_repeated='drop',
+                            baseline=baseline, preload=True, proj=False, reject_by_annotation=False)
+        epochs = epochs.drop_channels(self.channels_to_remove)
+        self.y_labels = epochs.events[:, -1] - min(epochs.events[:, -1]) + mat_label
+        self.x_data = epochs.get_data()*1e6
+        eeg_data={'x_data':self.x_data[:, :, :-1],
+                  'y_labels':self.y_labels,
+                  'fs':self.fs}
+        return eeg_data
+
+
 ##%%
 def get_data(path, subject=None, LOSO=False, Transfer=False, trans_num=0, onLine_2a=False,  data_model='one_session', isStandard=True, data_type='2a'):
     # Define dataset parameters
